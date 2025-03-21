@@ -1,5 +1,6 @@
+use std::str::FromStr;
 
-use std::{fmt::Error, str::FromStr};
+use crate::errors::Errors;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ChunkType {
@@ -41,11 +42,11 @@ impl std::fmt::Display for ChunkType {
 
 impl TryFrom<[u8; 4]> for ChunkType {
 
-    type Error = ();
+    type Error = Errors;
     
     fn try_from(value: [u8; 4]) -> std::result::Result<Self, Self::Error> {
         match value.len() != 4 {
-            true => Err(()),
+            true => Err(Errors::GenericError("Value is invalid".to_string())),
             false => Ok(
                 ChunkType {bytes: value}
             )
@@ -55,7 +56,7 @@ impl TryFrom<[u8; 4]> for ChunkType {
 
 impl FromStr for ChunkType {
 
-    type Err = Error;
+    type Err = Errors;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let filtered_bytes: Vec<u8> = s.as_bytes()
@@ -66,7 +67,7 @@ impl FromStr for ChunkType {
         
         match filtered_bytes.try_into() {
             Ok(bytes) => Ok(ChunkType{bytes}),
-            Err(_) => Err(Error),
+            Err(e) => Err(Errors::GenericError(String::from_utf8(e).unwrap())),
         }
     }
 }

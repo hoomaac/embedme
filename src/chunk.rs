@@ -1,4 +1,4 @@
-use crate::chunk_type::ChunkType;
+use crate::{chunk_type::ChunkType, errors::Errors};
 
 pub struct Crc32 {
     table: [u32; 256],
@@ -57,6 +57,7 @@ macro_rules! crc {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Chunk {
     length: usize,
     chunk_type: ChunkType,
@@ -81,39 +82,49 @@ impl Chunk {
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
-        self.data.to_vec()
+        let bytes = (self.length as u32).to_be_bytes();
+        bytes.iter()
+            .chain(self.chunk_type.bytes().iter())
+            .chain(self.data.iter())
+            .chain(self.crc.to_be_bytes().iter())
+            .copied()
+            .collect()
     }
 
-    fn crc(&self) -> u32 {
+    pub fn crc(&self) -> u32 {
         self.crc
     }
 
-    fn length(&self) -> usize {
+    pub fn length(&self) -> usize {
         self.length
     }
 
-    fn chunk_type(&self) -> ChunkType {
+    pub fn chunk_type(&self) -> ChunkType {
         self.chunk_type
     }
 
-    fn data_as_string(&self) -> Result<String, std::string::FromUtf8Error> {
-        String::from_utf8(self.as_bytes())
+    pub fn data(&self) -> Vec<u8> {
+        self.data.clone()
+    }
+
+    pub fn data_as_string(&self) -> Result<String, std::string::FromUtf8Error> {
+        String::from_utf8(self.data.to_vec())
     }
 
 }
 
-impl TryFrom<&Vec<u8>> for Chunk {
-    type Error = ();
+impl TryFrom<&[u8]> for Chunk {
+    type Error = Errors;
     
-    fn try_from(value: &Vec<u8>) -> Result<Self, Self::Error> {
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
 
         if value.len() < 12 {
-            return Err(());
+            return Err(Errors::GenericError("Value is invalid".to_string()));
         }
 
         let crc_pos = value.len() - 4;
         let length = u32::from_be_bytes([value[0], value[1], value[2], value[3]]) as usize;
-        let chunk_type = ChunkType::try_from([value[4], value[5], value[6], value[7]]).map_err(|_| ())?;
+        let chunk_type = ChunkType::try_from([value[4], value[5], value[6], value[7]])?;
         let data = value[8..crc_pos].to_vec();
         let crc: u32 = u32::from_be_bytes([value[crc_pos], value[crc_pos+1], value[crc_pos+2], value[crc_pos+3]]);
 
@@ -124,7 +135,7 @@ impl TryFrom<&Vec<u8>> for Chunk {
             .collect();
 
         if crc!(&buffer) != crc {
-            return Err(());
+            return Err(Errors::GenericError("Crc is invalid".to_string()));
         }
 
         Ok(
@@ -136,7 +147,13 @@ impl TryFrom<&Vec<u8>> for Chunk {
 
 impl std::fmt::Display for Chunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Length: {}, ChunkType: {}, Data: {}, CRC: {}", self.length, self.chunk_type, self.data_as_string().unwrap(), self.crc)    
+        writeln!(f, "Chunk {{",)?;
+        writeln!(f, "  Length: {}", self.length())?;
+        writeln!(f, "  Type: {}", self.chunk_type())?;
+        writeln!(f, "  Data: {:?} bytes", self.data())?;
+        writeln!(f, "  Crc: {}", self.crc())?;
+        writeln!(f, "}}",)?;
+        Ok(())
     }
 }
 
@@ -267,8 +284,6 @@ mod tests {
         let chunk: Chunk = TryFrom::try_from(chunk_data.as_ref()).unwrap();
         
         let _chunk_string = format!("{}", chunk);
-        assert_eq!(_chunk_string, "lowe");
-        print!("****************************{}", _chunk_string);
     }
     
 }

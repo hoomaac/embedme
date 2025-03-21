@@ -1,15 +1,104 @@
+use std::str::FromStr;
+use crate::{chunk::Chunk, chunk_type::ChunkType, errors::Errors};
 
+#[derive(Clone, Debug)]
 pub struct Png {
+    signature: [u8; 8],
+    chunks: Vec<Chunk>,
 }
 
 impl Png {
+    //89 50 4e 47 0d 0a 1a 0a
+    pub const STANDARD_HEADER:[u8; 8] = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+    pub fn from_chunks(chunks: Vec<Chunk>) -> Png {
+        Png {
+            signature: Png::STANDARD_HEADER,
+            chunks
+        }
+    }
+
+    pub fn chunks(&self) -> &[Chunk] {
+        &self.chunks
+    }
+
+    pub fn append_chunk(&mut self, chunk: Chunk) {
+        self.chunks.push(chunk);
+    }
+
+    pub fn remove_first_chunk(&mut self, chunk_type: &str) -> Result<Chunk, ()> {
+
+        let Some(position) = self.chunks.iter().position(|x| x.chunk_type() == ChunkType::from_str(chunk_type).unwrap()) else {
+            return Err(());
+        };
+
+        Ok(self.chunks.swap_remove(position))
+    }
+
+    pub fn header(&self) -> &[u8; 8] {
+        &self.signature
+    }
+
+    pub fn chunk_by_type(&self, chunk_type: &str) -> Option<&Chunk> {
+        self.chunks.iter().find(|x| x.chunk_type() == ChunkType::from_str(chunk_type).unwrap())
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let chunk_it = self.chunks.iter()
+            .flat_map(|chunk| chunk.as_bytes());
+
+        self.signature.iter()
+            .copied()
+            .chain(chunk_it)
+            .collect()
+    }
 }
 
+impl TryFrom<&[u8]> for Png {
+    type Error = Errors;
 
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() < 8 || &value[0..8] != Png::STANDARD_HEADER {
+            print!("{:?}\n", &value[0..8]);
+            return Err(Errors::GenericError("Value is invalid".to_string()));
+        }
+
+        let mut chunks: Vec<Chunk> = vec![];
+        let mut position = 8;
+
+        while position + 8 <= value.len() {
+            let length = u32::from_be_bytes([value[position], value[position+1], value[position+2], value[position+3]]) as usize; 
+
+            if position + 8 + length + 4 > value.len() {
+               return Err(Errors::GenericError("Value length is invalid".to_string()));
+            }
+
+            let chunk_data = &value[position..(position+8+length+4)];
+            let chunk = Chunk::try_from(chunk_data)?;
+            chunks.push(chunk);
+
+            position += 8 + length + 4;
+        }
+
+        if chunks.is_empty() {
+            return Err(Errors::GenericError("Png buffer is invalid".to_string()));
+        }
+
+        Ok(Self { signature: Png::STANDARD_HEADER, chunks })
+
+    }
+}
+
+impl std::fmt::Display for Png {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}, {:#?}", self.header(), self.chunks)
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Result;
     use crate::chunk_type::ChunkType;
     use crate::chunk::Chunk;
     use std::str::FromStr;
