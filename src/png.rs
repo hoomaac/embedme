@@ -26,10 +26,10 @@ impl Png {
         self.chunks.push(chunk);
     }
 
-    pub fn remove_first_chunk(&mut self, chunk_type: &str) -> Result<Chunk, ()> {
+    pub fn remove_first_chunk(&mut self, chunk_type: &str) -> Result<Chunk, Errors> {
 
         let Some(position) = self.chunks.iter().position(|x| x.chunk_type() == ChunkType::from_str(chunk_type).unwrap()) else {
-            return Err(());
+            return Err(Errors::GenericError("Couldn't remove the chunk".to_string()));
         };
 
         Ok(self.chunks.swap_remove(position))

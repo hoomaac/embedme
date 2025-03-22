@@ -29,7 +29,7 @@ pub fn decode(args: Decode) -> Result<()> {
     if let Some(chunk) = png.chunk_by_type(&args.chunk_type) {
         let msg = chunk.data_as_string()?;
 
-        println!("{}", msg);
+        println!("Secret: {}", msg);
     }
     else {
         return Err(Box::new(Errors::GenericError("Chunk not found".to_string())));
@@ -40,6 +40,12 @@ pub fn decode(args: Decode) -> Result<()> {
 
 /// Removes a chunk from a PNG file and saves the result
 pub fn remove(args: Remove) -> Result<()> {
+    let file = read(&args.path)?;
+    let mut png= Png::try_from(&file[..])?;
+
+    png.remove_first_chunk(&args.chunk_type)?;
+    write(&args.path, &png.as_bytes())?;
+
     Ok(())
 }
 
